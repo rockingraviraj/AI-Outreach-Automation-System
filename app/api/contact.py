@@ -10,18 +10,16 @@ from app.models.user import User
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
 
-# ✅ CSV Upload
 @router.post("/upload")
 def upload_contacts(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)   # 🔥 back to secure
 ):
 
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only CSV file allowed")
 
-    # Read CSV
     df = pd.read_csv(file.file)
 
     required_columns = ["name", "email"]
@@ -34,7 +32,7 @@ def upload_contacts(
     for _, row in df.iterrows():
         email = str(row["email"]).strip()
 
-        # 🔥 Duplicate check (same user)
+        # ✅ correct duplicate check
         exists = db.query(Contact).filter(
             Contact.email == email,
             Contact.user_id == current_user.id
@@ -44,7 +42,7 @@ def upload_contacts(
             continue
 
         contact = Contact(
-            user_id=current_user.id,
+            user_id=current_user.id,   # 🔥 correct user
             name=str(row["name"]),
             email=email,
             company=str(row.get("company", "")),
