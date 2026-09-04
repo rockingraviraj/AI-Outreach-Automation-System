@@ -1,31 +1,64 @@
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+from dotenv import load_dotenv
 
-EMAIL = "your_email@gmail.com"
-PASSWORD = "your_app_password"   # ⚠️ Gmail app password
+load_dotenv()
 
-def send_email(to_email: str, subject: str, body: str):
 
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL
-    msg["To"] = to_email
-    msg["Subject"] = subject
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-    msg.attach(MIMEText(body, "plain"))
+
+def send_email(
+    to_email: str,
+    subject: str,
+    body: str
+) -> bool:
+
+    if not SMTP_EMAIL:
+        raise RuntimeError("SMTP_EMAIL is not configured")
+
+    if not SMTP_PASSWORD:
+        raise RuntimeError("SMTP_PASSWORD is not configured")
+
+    message = MIMEMultipart("alternative")
+
+    message["From"] = SMTP_EMAIL
+    message["To"] = to_email
+    message["Subject"] = subject
+
+    message.attach(
+        MIMEText(body, "html", "utf-8")
+    )
+
+    server = None
 
     try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server = smtplib.SMTP(
+            SMTP_SERVER,
+            SMTP_PORT,
+            timeout=30
+        )
+
         server.starttls()
-        server.login(EMAIL, PASSWORD)
-        server.send_message(msg)
-        server.quit()
+
+        server.login(
+            SMTP_EMAIL,
+            SMTP_PASSWORD
+        )
+
+        server.send_message(message)
 
         return True
 
-    except Exception as e:
-        print("Email error:", e)
-        return False
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass

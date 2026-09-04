@@ -1,53 +1,150 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    verify_password,
+)
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin
-from app.core.security import hash_password, verify_password, create_access_token
-from fastapi.security import OAuth2PasswordRequestForm
-
-router = APIRouter(prefix="/auth", tags=["Auth"])
+from app.schemas.user import UserCreate
 
 
-# ✅ SIGNUP
+router = APIRouter(
+    prefix="/auth",
+    tags=["Auth"]
+)
+
+
+# =========================================================
+# SIGNUP
+# POST /auth/signup
+# =========================================================
+
 @router.post("/signup")
-def signup(user: UserCreate, db: Session = Depends(get_db)):
+def signup(
+    user: UserCreate,
+    db: Session = Depends(get_db)
+):
+    name = user.name.strip()
+    email = user.email.strip().lower()
 
-    # 🔍 Check if user exists
-    existing_user = db.query(User).filter(User.email == user.email).first()
+    if not name:
+        raise HTTPException(
+            status_code=422,
+            detail="Name cannot be empty"
+        )
+
+    if not email:
+        raise HTTPException(
+            status_code=422,
+            detail="Email cannot be empty"
+        )
+
+    try:
+        hashed_pw = hash_password(
+            user.password
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc)
+        )
+
+    existing_user = (
+        db.query(User)
+        .filter(
+            User.email == email
+        )
+        .first()
+    )
+
     if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(
+            status_code=409,
+            detail="Email already registered"
+        )
 
-    # 🔐 Hash password (FIXED)
-    hashed_pw = hash_password(user.password)
-
-    # 🧱 Create user
     new_user = User(
-        name=user.name,
-        email=user.email,
+        name=name,
+        email=email,
         password_hash=hashed_pw
     )
 
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
 
-    return {"message": "User created successfully"}
+    except IntegrityError:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=409,
+            detail="Email already registered"
+        )
+
+    return {
+        "message": "User created successfully"
+    }
 
 
-# ✅ LOGIN
+# =========================================================
+# LOGIN
+# POST /auth/login
+# =========================================================
+
 @router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    email = form_data.username.strip().lower()
 
-    db_user = db.query(User).filter(User.email == form_data.username).first()
+    db_user = (
+        db.query(User)
+        .filter(
+            User.email == email
+        )
+        .first()
+    )
 
     if not db_user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials"
+        )
 
-    if not verify_password(form_data.password, db_user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not db_user.password_hash:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials"
+        )
 
-    token = create_access_token({"sub": db_user.email})
+    try:
+        valid_password = verify_password(
+            form_data.password,
+            db_user.password_hash
+        )
 
-    return {"access_token": token, "token_type": "bearer"}
+    except (ValueError, Exception):
+        valid_password = False
+
+    if not valid_password:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials"
+        )
+
+    token = create_access_token({
+        "sub": db_user.email
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer"
+    }

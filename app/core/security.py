@@ -1,44 +1,96 @@
-from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from jose import jwt
 import os
+
 from dotenv import load_dotenv
+from jose import jwt
+from passlib.context import CryptContext
+
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
+
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
-# 🔥 bcrypt config (stable)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY is not configured"
+    )
+
+if len(SECRET_KEY) < 32:
+    raise RuntimeError(
+        "SECRET_KEY must be at least 32 characters long"
+    )
 
 
-# ✅ HASH PASSWORD (FINAL FIXED)
-def hash_password(password: str) -> str:
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto"
+)
+
+
+def validate_password(password: str) -> str:
     if not isinstance(password, str):
-        password = str(password)
+        raise ValueError(
+            "Password must be a string"
+        )
 
-    # 🔥 IMPORTANT FIX (bcrypt limit)
-    password = password[:72]
+    if not password:
+        raise ValueError(
+            "Password cannot be empty"
+        )
+
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError(
+            "Password cannot exceed 72 bytes"
+        )
+
+    return password
+
+
+def hash_password(password: str) -> str:
+    password = validate_password(password)
 
     return pwd_context.hash(password)
 
 
-# ✅ VERIFY PASSWORD (FINAL FIXED)
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    if not isinstance(plain_password, str):
-        plain_password = str(plain_password)
+def verify_password(
+    plain_password: str,
+    hashed_password: str
+) -> bool:
+    plain_password = validate_password(
+        plain_password
+    )
 
-    plain_password = plain_password[:72]
+    return pwd_context.verify(
+        plain_password,
+        hashed_password
+    )
 
-    return pwd_context.verify(plain_password, hashed_password)
 
+def create_access_token(
+    data: dict,
+    expires_minutes: int = 60
+):
+    if expires_minutes <= 0:
+        raise ValueError(
+            "Token expiration must be greater than zero"
+        )
 
-# ✅ CREATE JWT TOKEN
-def create_access_token(data: dict, expires_minutes: int = 60):
     to_encode = data.copy()
 
-    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
-    to_encode.update({"exp": expire})
+    expire = (
+        datetime.utcnow()
+        + timedelta(minutes=expires_minutes)
+    )
 
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    to_encode.update({
+        "exp": expire
+    })
+
+    return jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
