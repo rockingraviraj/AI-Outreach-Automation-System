@@ -1,9 +1,9 @@
 from datetime import datetime
-import os
 
 import app.models
 
 from app.core.celery_worker import celery_app
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.email import Email
 from app.models.contact import Contact
@@ -147,49 +147,35 @@ def send_email_task(
                 "status": "failed"
             }
 
-        # -------------------------------------------------
-        # CONTROLLED FAILURE MODE FOR E2E TESTING
-        # -------------------------------------------------
-
-        force_failure = os.getenv(
-            "FORCE_EMAIL_FAILURE",
-            "false"
-        ).lower() == "true"
-
-        if force_failure:
+        # Controlled failure mode for E2E testing.
+        if settings.FORCE_EMAIL_FAILURE:
             raise RuntimeError(
                 "FORCED EMAIL FAILURE FOR E2E TEST"
             )
 
-        # -------------------------------------------------
-        # AI generation
-        # -------------------------------------------------
-
+        # AI generation.
         ai_content = generate_email(
             contact.name,
             contact.company or "your company"
         )
 
-        app_base_url = os.getenv(
-            "APP_BASE_URL",
-            "http://127.0.0.1:8000"
-        ).rstrip("/")
+        app_base_url = settings.APP_BASE_URL
 
         body = f"""
-        <html>
-            <body>
-                {ai_content}
+<html>
+    <body>
+        {ai_content}
 
-                <img
-                    src="{app_base_url}/tracking/open/{email_log.tracking_token}"
-                    width="1"
-                    height="1"
-                    alt=""
-                    style="display:none;"
-                />
-            </body>
-        </html>
-        """
+        <img
+            src="{app_base_url}/tracking/open/{email_log.tracking_token}"
+            width="1"
+            height="1"
+            alt=""
+            style="display:none;"
+        />
+    </body>
+</html>
+"""
 
         email_log.body = body
 

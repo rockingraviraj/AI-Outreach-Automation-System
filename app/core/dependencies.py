@@ -1,31 +1,11 @@
-import os
-
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
-
-
-load_dotenv()
-
-
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-
-
-if not SECRET_KEY:
-    raise RuntimeError(
-        "SECRET_KEY is not configured"
-    )
-
-if len(SECRET_KEY) < 32:
-    raise RuntimeError(
-        "SECRET_KEY must be at least 32 characters long"
-    )
 
 
 oauth2_scheme = OAuth2PasswordBearer(
@@ -40,8 +20,8 @@ def get_current_user(
     try:
         payload = jwt.decode(
             token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM]
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM]
         )
 
         email = payload.get("sub")

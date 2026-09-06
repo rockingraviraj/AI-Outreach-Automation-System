@@ -1,6 +1,3 @@
-import os
-
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,8 +11,7 @@ from app.api.campaign import router as campaign_router
 from app.api import tracking, analytics
 from app.api.ai import router as ai_router
 
-
-load_dotenv()
+from app.core.config import settings
 
 
 app = FastAPI(
@@ -29,24 +25,21 @@ app = FastAPI(
 # CORS
 # =========================================================
 
-cors_origins_raw = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000"
-)
-
-cors_origins = [
-    origin.strip()
-    for origin in cors_origins_raw.split(",")
-    if origin.strip()
-]
-
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=[
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE",
+        "OPTIONS"
+    ],
+    allow_headers=[
+        "Authorization",
+        "Content-Type"
+    ],
 )
 
 

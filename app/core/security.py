@@ -1,27 +1,9 @@
 from datetime import datetime, timedelta
-import os
 
-from dotenv import load_dotenv
 from jose import jwt
 from passlib.context import CryptContext
 
-
-load_dotenv()
-
-
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-
-
-if not SECRET_KEY:
-    raise RuntimeError(
-        "SECRET_KEY is not configured"
-    )
-
-if len(SECRET_KEY) < 32:
-    raise RuntimeError(
-        "SECRET_KEY must be at least 32 characters long"
-    )
+from app.core.config import settings
 
 
 pwd_context = CryptContext(
@@ -91,6 +73,6 @@ def create_access_token(
 
     return jwt.encode(
         to_encode,
-        SECRET_KEY,
-        algorithm=ALGORITHM
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM
     )
