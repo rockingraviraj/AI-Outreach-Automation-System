@@ -19,6 +19,11 @@ from app.db.session import get_db
 from app.models.contact import Contact
 from app.core.dependencies import get_current_user
 from app.models.user import User
+from app.schemas.contact import (
+    ContactCreate,
+    ContactUpdate,
+    CONTACT_STATUSES,
+)
 
 
 router = APIRouter(
@@ -37,15 +42,12 @@ router = APIRouter(
     status_code=status.HTTP_201_CREATED
 )
 def create_contact(
-    name: str,
-    email: str,
-    company: str | None = None,
-    linkedin_url: str | None = None,
+    contact_data: ContactCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    name = name.strip()
-    email = email.strip().lower()
+    name = contact_data.name.strip()
+    email = str(contact_data.email).strip().lower()
 
     if not name:
         raise HTTPException(
@@ -53,18 +55,10 @@ def create_contact(
             detail="Name cannot be empty"
         )
 
-    if not email:
+    if contact_data.status not in CONTACT_STATUSES:
         raise HTTPException(
             status_code=422,
-            detail="Email cannot be empty"
-        )
-
-    try:
-        email = str(EmailStr._validate(email))
-    except (ValidationError, ValueError):
-        raise HTTPException(
-            status_code=422,
-            detail="Invalid email address"
+            detail="Invalid contact status"
         )
 
     existing_contact = (
@@ -86,8 +80,17 @@ def create_contact(
         user_id=current_user.id,
         name=name,
         email=email,
-        company=(company or "").strip(),
-        linkedin_url=(linkedin_url or "").strip(),
+        company=(
+            contact_data.company.strip()
+            if contact_data.company
+            else ""
+        ),
+        linkedin_url=(
+            contact_data.linkedin_url.strip()
+            if contact_data.linkedin_url
+            else ""
+        ),
+        status=contact_data.status,
     )
 
     try:
@@ -131,9 +134,22 @@ def get_contacts(
     email: str | None = Query(
         default=None
     ),
+    status_filter: str | None = Query(
+        default=None,
+        alias="status"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if (
+        status_filter is not None
+        and status_filter not in CONTACT_STATUSES
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid contact status"
+        )
+
     query = (
         db.query(Contact)
         .filter(
@@ -164,6 +180,11 @@ def get_contacts(
             Contact.email.ilike(
                 f"%{email.strip()}%"
             )
+        )
+
+    if status_filter:
+        query = query.filter(
+            Contact.status == status_filter
         )
 
     query = query.order_by(
@@ -229,10 +250,7 @@ def get_contact(
 @router.patch("/{contact_id}")
 def update_contact(
     contact_id: int,
-    name: str | None = None,
-    email: str | None = None,
-    company: str | None = None,
-    linkedin_url: str | None = None,
+    contact_data: ContactUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -251,8 +269,8 @@ def update_contact(
             detail="Contact not found"
         )
 
-    if name is not None:
-        name = name.strip()
+    if contact_data.name is not None:
+        name = contact_data.name.strip()
 
         if not name:
             raise HTTPException(
@@ -262,30 +280,16 @@ def update_contact(
 
         contact.name = name
 
-    if email is not None:
-        email = email.strip().lower()
-
-        if not email:
-            raise HTTPException(
-                status_code=422,
-                detail="Email cannot be empty"
-            )
-
-        try:
-            validated_email = str(
-                EmailStr._validate(email)
-            )
-        except (ValidationError, ValueError):
-            raise HTTPException(
-                status_code=422,
-                detail="Invalid email address"
-            )
+    if contact_data.email is not None:
+        email = str(
+            contact_data.email
+        ).strip().lower()
 
         existing_contact = (
             db.query(Contact)
             .filter(
                 Contact.user_id == current_user.id,
-                Contact.email == validated_email,
+                Contact.email == email,
                 Contact.id != contact.id
             )
             .first()
@@ -297,13 +301,24 @@ def update_contact(
                 detail="Contact with this email already exists"
             )
 
-        contact.email = validated_email
+        contact.email = email
 
-    if company is not None:
-        contact.company = company.strip()
+    if contact_data.company is not None:
+        contact.company = contact_data.company.strip()
 
-    if linkedin_url is not None:
-        contact.linkedin_url = linkedin_url.strip()
+    if contact_data.linkedin_url is not None:
+        contact.linkedin_url = (
+            contact_data.linkedin_url.strip()
+        )
+
+    if contact_data.status is not None:
+        if contact_data.status not in CONTACT_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid contact status"
+            )
+
+        contact.status = contact_data.status
 
     try:
         db.commit()
@@ -394,10 +409,10 @@ def upload_contacts(
     try:
         df = pd.read_csv(file.file)
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=400,
-            detail=f"Unable to read CSV file: {str(exc)}"
+            detail="Unable to read CSV file"
         )
 
     required_columns = [
@@ -526,7 +541,8 @@ def upload_contacts(
             name=contact_data["name"],
             email=contact_data["email"],
             company=contact_data["company"],
-            linkedin_url=contact_data["linkedin_url"]
+            linkedin_url=contact_data["linkedin_url"],
+            status="new"
         )
 
         db.add(contact)

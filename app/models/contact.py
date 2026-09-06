@@ -40,6 +40,13 @@ class Contact(Base):
         nullable=True
     )
 
+    status = Column(
+        String(20),
+        nullable=False,
+        default="new",
+        index=True
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "user_id",
