@@ -131,7 +131,7 @@ def login(
             db_user.password_hash
         )
 
-    except (ValueError, Exception):
+    except ValueError:
         valid_password = False
 
     if not valid_password:
@@ -141,7 +141,7 @@ def login(
         )
 
     token = create_access_token({
-        "sub": db_user.email
+        "sub": str(db_user.id)
     })
 
     return {

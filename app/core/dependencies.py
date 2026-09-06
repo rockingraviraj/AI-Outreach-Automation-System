@@ -16,7 +16,7 @@ oauth2_scheme = OAuth2PasswordBearer(
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
-):
+) -> User:
     try:
         payload = jwt.decode(
             token,
@@ -24,9 +24,23 @@ def get_current_user(
             algorithms=[settings.ALGORITHM]
         )
 
-        email = payload.get("sub")
+        user_id_raw = payload.get("sub")
 
-        if not email:
+        if user_id_raw is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token"
+            )
+
+        try:
+            user_id = int(user_id_raw)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token"
+            )
+
+        if user_id <= 0:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid token"
@@ -41,7 +55,7 @@ def get_current_user(
     user = (
         db.query(User)
         .filter(
-            User.email == email
+            User.id == user_id
         )
         .first()
     )
