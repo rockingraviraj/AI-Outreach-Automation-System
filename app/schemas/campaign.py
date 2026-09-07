@@ -9,7 +9,6 @@ class CampaignCreate(BaseModel):
 
 class CampaignUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
-    status: str | None = None
 
 
 class CampaignResponse(BaseModel):

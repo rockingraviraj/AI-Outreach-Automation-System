@@ -125,51 +125,51 @@ def create_campaign(
 # POST /campaign/create
 # =========================================================
 
-@router.post("/create")
-def create_campaign_legacy(
-    name: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    name = name.strip()
+# @router.post("/create")
+# def create_campaign_legacy(
+#     name: str,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+# ):
+#     name = name.strip()
 
-    if not name:
-        raise HTTPException(
-            status_code=422,
-            detail="Campaign name cannot be empty"
-        )
+#     if not name:
+#         raise HTTPException(
+#             status_code=422,
+#             detail="Campaign name cannot be empty"
+#         )
 
-    if len(name) > 100:
-        raise HTTPException(
-            status_code=422,
-            detail="Campaign name cannot exceed 100 characters"
-        )
+#     if len(name) > 100:
+#         raise HTTPException(
+#             status_code=422,
+#             detail="Campaign name cannot exceed 100 characters"
+#         )
 
-    campaign = Campaign(
-        name=name,
-        user_id=current_user.id,
-        status="draft",
-    )
+#     campaign = Campaign(
+#         name=name,
+#         user_id=current_user.id,
+#         status="draft",
+#     )
 
-    try:
-        db.add(campaign)
-        db.commit()
-        db.refresh(campaign)
+#     try:
+#         db.add(campaign)
+#         db.commit()
+#         db.refresh(campaign)
 
-    except IntegrityError:
-        db.rollback()
+#     except IntegrityError:
+#         db.rollback()
 
-        raise HTTPException(
-            status_code=409,
-            detail="Unable to create campaign"
-        )
+#         raise HTTPException(
+#             status_code=409,
+#             detail="Unable to create campaign"
+#         )
 
-    return {
-        "message": "Campaign created",
-        "campaign_id": campaign.id,
-        "user_id": current_user.id,
-        "status": campaign.status,
-    }
+#     return {
+#         "message": "Campaign created",
+#         "campaign_id": campaign.id,
+#         "user_id": current_user.id,
+#         "status": campaign.status,
+#     }
 
 
 # =========================================================
@@ -262,11 +262,6 @@ def update_campaign(
         current_user
     )
 
-    if campaign_data.status is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Campaign status is managed by the execution system"
-        )
 
     if campaign_data.name is not None:
         ensure_campaign_editable(campaign)
