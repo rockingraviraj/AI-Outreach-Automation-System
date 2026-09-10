@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.services.ai_service import generate_email
-from app.models.user import User
+
 from app.core.dependencies import get_current_user
+from app.models.user import User
+from app.schemas.ai import (
+    AIGenerateRequest,
+    AIGenerateResponse,
+)
+from app.services.ai_service import generate_email_preview
 
 
 router = APIRouter(
@@ -10,14 +15,16 @@ router = APIRouter(
 )
 
 
-@router.get("/generate")
+@router.post(
+    "/generate",
+    response_model=AIGenerateResponse,
+)
 def generate(
-    name: str,
-    company: str,
-    current_user: User = Depends(get_current_user)
+    data: AIGenerateRequest,
+    current_user: User = Depends(get_current_user),
 ):
-    name = name.strip()
-    company = company.strip()
+    name = data.name.strip()
+    company = data.company.strip()
 
     if not name:
         raise HTTPException(
@@ -31,23 +38,9 @@ def generate(
             detail="Company cannot be empty"
         )
 
-    if len(name) > 100:
-        raise HTTPException(
-            status_code=422,
-            detail="Name cannot exceed 100 characters"
-        )
-
-    if len(company) > 150:
-        raise HTTPException(
-            status_code=422,
-            detail="Company cannot exceed 150 characters"
-        )
-
-    email = generate_email(
+    result = generate_email_preview(
         name,
         company
     )
 
-    return {
-        "email": email
-    }
+    return result
