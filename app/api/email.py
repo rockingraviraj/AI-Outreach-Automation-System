@@ -1,8 +1,8 @@
 from datetime import datetime
-import os
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -12,6 +12,7 @@ from app.models.campaign import Campaign
 from app.models.campaign_contact import CampaignContact
 from app.models.user import User
 
+from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.services.ai_service import generate_email
 from app.services.email_service import send_email
@@ -25,14 +26,56 @@ router = APIRouter(
 
 
 def get_app_base_url() -> str:
-    return os.getenv(
-        "APP_BASE_URL",
-        "http://127.0.0.1:8000"
-    ).rstrip("/")
+    return settings.APP_BASE_URL
 
 
 def generate_tracking_token() -> str:
     return secrets.token_urlsafe(48)
+
+
+def get_active_campaign_email(
+    db: Session,
+    campaign_id: int,
+    contact_id: int
+):
+    return (
+        db.query(Email)
+        .filter(
+            Email.campaign_id == campaign_id,
+            Email.contact_id == contact_id,
+            Email.status.in_(
+                ["pending", "sent", "opened"]
+            )
+        )
+        .first()
+    )
+
+
+def is_active_email_conflict(exc: IntegrityError) -> bool:
+    original_error = getattr(exc, "orig", None)
+
+    error_code = (
+        getattr(original_error, "pgcode", None)
+        or getattr(original_error, "sqlstate", None)
+    )
+
+    diagnostics = getattr(
+        original_error,
+        "diag",
+        None
+    )
+
+    constraint_name = getattr(
+        diagnostics,
+        "constraint_name",
+        None
+    )
+
+    return (
+        error_code == "23505"
+        and constraint_name
+        == "uq_emails_active_campaign_contact"
+    )
 
 
 # =========================================================
@@ -124,7 +167,10 @@ def send_to_contact(
         }
 
     except Exception as exc:
-        print("EMAIL SEND ERROR:", repr(exc))
+        print(
+            "EMAIL SEND ERROR:",
+            repr(exc)
+        )
 
         db.rollback()
 
@@ -142,7 +188,10 @@ def send_to_contact(
                 db.commit()
 
         except Exception as db_error:
-            print("EMAIL DB ERROR:", repr(db_error))
+            print(
+                "EMAIL DB ERROR:",
+                repr(db_error)
+            )
             db.rollback()
 
         raise HTTPException(
@@ -209,16 +258,10 @@ def send_campaign(
 
     try:
         for contact in contacts:
-            existing_email = (
-                db.query(Email)
-                .filter(
-                    Email.campaign_id == campaign.id,
-                    Email.contact_id == contact.id,
-                    Email.status.in_(
-                        ["pending", "sent", "opened"]
-                    )
-                )
-                .first()
+            existing_email = get_active_campaign_email(
+                db,
+                campaign.id,
+                contact.id
             )
 
             if existing_email:
@@ -241,7 +284,32 @@ def send_campaign(
                 tracking_token=generate_tracking_token()
             )
 
-            db.add(email_log)
+            try:
+                with db.begin_nested():
+                    db.add(email_log)
+                    db.flush()
+
+            except IntegrityError as exc:
+                if not is_active_email_conflict(exc):
+                    raise
+
+                existing_email = get_active_campaign_email(
+                    db,
+                    campaign.id,
+                    contact.id
+                )
+
+                if existing_email:
+                    results.append({
+                        "email_id": existing_email.id,
+                        "contact": contact.email,
+                        "status": existing_email.status,
+                        "skipped": True
+                    })
+                    continue
+
+                raise
+
             db.commit()
             db.refresh(email_log)
 
@@ -422,16 +490,10 @@ def send_campaign_async(
     queued_ids = []
 
     for contact in contacts:
-        existing_email = (
-            db.query(Email)
-            .filter(
-                Email.campaign_id == campaign.id,
-                Email.contact_id == contact.id,
-                Email.status.in_(
-                    ["pending", "sent", "opened"]
-                )
-            )
-            .first()
+        existing_email = get_active_campaign_email(
+            db,
+            campaign.id,
+            contact.id
         )
 
         if existing_email:
@@ -446,12 +508,31 @@ def send_campaign_async(
             tracking_token=generate_tracking_token()
         )
 
-        db.add(email_log)
-        db.flush()
+        try:
+            with db.begin_nested():
+                db.add(email_log)
+                db.flush()
+
+        except IntegrityError as exc:
+            if not is_active_email_conflict(exc):
+                raise
+
+            existing_email = get_active_campaign_email(
+                db,
+                campaign.id,
+                contact.id
+            )
+
+            if existing_email:
+                continue
+
+            raise
 
         queued_ids.append(email_log.id)
 
     if not queued_ids:
+        db.refresh(campaign)
+
         return {
             "message": "No new contacts to queue",
             "campaign_id": campaign.id,
