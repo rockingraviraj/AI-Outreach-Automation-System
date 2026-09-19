@@ -179,11 +179,16 @@ def send_email_task(
 
         email_log.body = body
 
-        send_email(
+        success = send_email(
             contact.email,
             email_log.subject,
             body
         )
+
+        if not success:
+            raise RuntimeError(
+                "Email delivery failed"
+            )
 
         email_log.status = "sent"
         email_log.sent_at = datetime.utcnow()
