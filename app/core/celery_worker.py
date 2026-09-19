@@ -21,4 +21,6 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="Asia/Kolkata",
     enable_utc=True,
+    worker_prefetch_multiplier=1,
+    task_track_started=True,
 )
