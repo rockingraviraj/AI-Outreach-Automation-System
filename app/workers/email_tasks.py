@@ -2,6 +2,8 @@ from datetime import datetime
 
 import app.models
 
+from sqlalchemy import update
+
 from app.core.celery_worker import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -72,6 +74,64 @@ def update_campaign_status_if_complete(
     db.commit()
 
 
+def claim_email(
+    db,
+    email_id: int,
+    processing_token: str
+):
+    result = (
+        db.execute(
+            update(Email)
+            .where(
+                Email.id == email_id,
+                Email.status == "pending"
+            )
+            .values(
+                status="sending",
+                processing_token=processing_token,
+                processing_started_at=datetime.utcnow()
+            )
+        )
+    )
+
+    if result.rowcount == 1:
+        db.commit()
+
+        return "claimed"
+
+    db.rollback()
+
+    email_log = (
+        db.query(Email)
+        .filter(
+            Email.id == email_id
+        )
+        .first()
+    )
+
+    if not email_log:
+        raise RuntimeError(
+            f"Email log {email_id} not found"
+        )
+
+    if email_log.status in {"sent", "opened"}:
+        return "completed"
+
+    if (
+        email_log.status == "sending"
+        and email_log.processing_token == processing_token
+    ):
+        return "owned"
+
+    if email_log.status == "sending":
+        return "processing"
+
+    if email_log.status == "failed":
+        return "failed"
+
+    return "unavailable"
+
+
 @celery_app.task(
     bind=True,
     max_retries=3
@@ -109,6 +169,52 @@ def send_email_task(
                 "status": email_log.status
             }
 
+        processing_token = self.request.id
+
+        # Atomically claim a pending email.
+        claim_status = claim_email(
+            db,
+            email_id,
+            processing_token
+        )
+
+        if claim_status == "completed":
+            return {
+                "email_id": email_id,
+                "status": "already_completed"
+            }
+
+        if claim_status == "processing":
+            return {
+                "email_id": email_id,
+                "status": "already_processing"
+            }
+
+        if claim_status == "failed":
+            return {
+                "email_id": email_id,
+                "status": "failed"
+            }
+
+        if claim_status == "unavailable":
+            return {
+                "email_id": email_id,
+                "status": "unavailable"
+            }
+
+        email_log = (
+            db.query(Email)
+            .filter(
+                Email.id == email_id
+            )
+            .first()
+        )
+
+        if not email_log:
+            raise RuntimeError(
+                f"Email log {email_id} not found after claim"
+            )
+
         # Verify campaign/contact relationship.
         if email_log.campaign_id is not None:
             contact = (
@@ -134,6 +240,8 @@ def send_email_task(
 
         if not contact:
             email_log.status = "failed"
+            email_log.processing_token = None
+            email_log.processing_started_at = None
             db.commit()
 
             if email_log.campaign_id is not None:
@@ -192,6 +300,8 @@ def send_email_task(
 
         email_log.status = "sent"
         email_log.sent_at = datetime.utcnow()
+        email_log.processing_token = None
+        email_log.processing_started_at = None
 
         db.commit()
 
@@ -214,14 +324,12 @@ def send_email_task(
 
         db.rollback()
 
-        # Retry up to 3 times.
         if self.request.retries < self.max_retries:
             raise self.retry(
                 exc=exc,
                 countdown=10
             )
 
-        # Final failure.
         try:
             email_log = (
                 db.query(Email)
@@ -233,6 +341,8 @@ def send_email_task(
 
             if email_log:
                 email_log.status = "failed"
+                email_log.processing_token = None
+                email_log.processing_started_at = None
                 db.commit()
 
                 if email_log.campaign_id is not None:

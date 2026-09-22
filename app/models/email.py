@@ -5,9 +5,9 @@ from sqlalchemy import (
     ForeignKey,
     DateTime,
     Index,
+    UniqueConstraint,
     text
 )
-from datetime import datetime
 
 from app.db.base import Base
 
@@ -54,9 +54,7 @@ class Email(Base):
 
     tracking_token = Column(
         String(64),
-        nullable=False,
-        unique=True,
-        index=True
+        nullable=False
     )
 
     sent_at = Column(
@@ -64,7 +62,27 @@ class Email(Base):
         nullable=True
     )
 
+    processing_token = Column(
+        String(100),
+        nullable=True,
+        index=True
+    )
+
+    processing_started_at = Column(
+        DateTime,
+        nullable=True
+    )
+
     __table_args__ = (
+        UniqueConstraint(
+            "tracking_token",
+            name="uq_emails_tracking_token"
+        ),
+        Index(
+            "ix_emails_tracking_token",
+            "tracking_token",
+            unique=False
+        ),
         Index(
             "uq_emails_active_campaign_contact",
             "campaign_id",
@@ -72,7 +90,7 @@ class Email(Base):
             unique=True,
             postgresql_where=text(
                 "campaign_id IS NOT NULL "
-                "AND status IN ('pending', 'sent', 'opened')"
+                "AND status IN ('pending', 'sending', 'sent', 'opened')"
             ),
         ),
     )

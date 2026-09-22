@@ -44,7 +44,7 @@ def get_active_campaign_email(
             Email.campaign_id == campaign_id,
             Email.contact_id == contact_id,
             Email.status.in_(
-                ["pending", "sent", "opened"]
+                ["pending", "sending", "sent", "opened"]
             )
         )
         .first()
