@@ -262,6 +262,11 @@ def update_campaign(
         current_user
     )
 
+    if "status" in campaign_data.model_fields_set:
+        raise HTTPException(
+            status_code=409,
+            detail="Campaign status is managed by the execution system"
+        )
 
     if campaign_data.name is not None:
         ensure_campaign_editable(campaign)

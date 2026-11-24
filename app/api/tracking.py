@@ -4,30 +4,35 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.email import Email
+from app.workers.email_tasks import update_campaign_status_if_complete
 
 router = APIRouter(
     prefix="/tracking",
-    tags=["Tracking"]
+    tags=["Tracking"],
 )
 
 
 @router.get("/open/{tracking_token}")
 def track_open(
     tracking_token: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     email = (
         db.query(Email)
-        .filter(
-            Email.tracking_token == tracking_token
-        )
+        .filter(Email.tracking_token == tracking_token)
         .first()
     )
 
-    if email:
-        if email.status != "opened":
-            email.status = "opened"
-            db.commit()
+    # A tracked open is positive evidence that an email whose SMTP outcome
+    # was uncertain has in fact reached a mail client. Keep failed/pending/
+    # sending states unchanged.
+    if email and email.status in {"sent", "delivery_unknown"}:
+        campaign_id = email.campaign_id
+        email.status = "opened"
+        db.commit()
+
+        if campaign_id is not None:
+            update_campaign_status_if_complete(db, campaign_id)
 
     # 1x1 transparent pixel
     pixel = (
@@ -40,5 +45,5 @@ def track_open(
 
     return Response(
         content=pixel,
-        media_type="image/gif"
+        media_type="image/gif",
     )

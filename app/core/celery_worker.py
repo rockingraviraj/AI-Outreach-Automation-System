@@ -11,7 +11,7 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
     include=[
         "app.workers.email_tasks"
-    ]
+    ],
 )
 
 
@@ -23,4 +23,10 @@ celery_app.conf.update(
     enable_utc=True,
     worker_prefetch_multiplier=1,
     task_track_started=True,
+    beat_schedule={
+        "recover-stale-email-processing-every-minute": {
+            "task": "app.workers.email_tasks.recover_stale_email_tasks",
+            "schedule": 60.0,
+        },
+    },
 )

@@ -44,7 +44,7 @@ def get_active_campaign_email(
             Email.campaign_id == campaign_id,
             Email.contact_id == contact_id,
             Email.status.in_(
-                ["pending", "sending", "sent", "opened"]
+                ["pending", "sending", "sent", "opened", "delivery_unknown"]
             )
         )
         .first()
@@ -391,7 +391,7 @@ def send_campaign(
         failed_count = sum(
             1
             for result in results
-            if result.get("status") == "failed"
+            if result.get("status") in {"failed", "delivery_unknown"}
         )
 
         campaign.status = (
@@ -505,7 +505,8 @@ def send_campaign_async(
             subject="Async Campaign Email",
             body="",
             status="pending",
-            tracking_token=generate_tracking_token()
+            tracking_token=generate_tracking_token(),
+            recovery_requested_at=datetime.utcnow()
         )
 
         try:

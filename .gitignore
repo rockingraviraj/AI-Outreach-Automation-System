@@ -64,3 +64,11 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Local backups and patch snapshots
+/backup_before_stale_recovery/
+/stale_email_recovery_patch/
+/stale_email_recovery_patch_v3/
+/app/workers/email_tasks.py.backup
+/c31f7a92d6e4_add_stale_email_recovery.py
+/email_tasks_fixed.py

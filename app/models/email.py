@@ -6,7 +6,7 @@ from sqlalchemy import (
     DateTime,
     Index,
     UniqueConstraint,
-    text
+    text,
 )
 
 from app.db.base import Base
@@ -18,70 +18,94 @@ class Email(Base):
     id = Column(
         Integer,
         primary_key=True,
-        index=True
+        index=True,
     )
 
     campaign_id = Column(
         Integer,
         ForeignKey("campaigns.id"),
         nullable=True,
-        index=True
+        index=True,
     )
 
     contact_id = Column(
         Integer,
         ForeignKey("contacts.id"),
         nullable=False,
-        index=True
+        index=True,
     )
 
     subject = Column(
         String,
-        nullable=False
+        nullable=False,
     )
 
     body = Column(
         String,
-        nullable=False
+        nullable=False,
     )
 
     status = Column(
         String,
         default="pending",
         nullable=False,
-        index=True
+        index=True,
     )
 
     tracking_token = Column(
         String(64),
-        nullable=False
+        nullable=False,
     )
 
     sent_at = Column(
         DateTime,
-        nullable=True
+        nullable=True,
     )
 
     processing_token = Column(
         String(100),
         nullable=True,
-        index=True
+        index=True,
     )
 
     processing_started_at = Column(
         DateTime,
-        nullable=True
+        nullable=True,
+    )
+
+    # Set and committed immediately before calling the SMTP service.
+    # A stale row with this value is conservatively treated as uncertain.
+    smtp_attempt_started_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    # Durable marker for recovery/retry dispatch. It is cleared when a
+    # worker successfully claims the pending email.
+    recovery_requested_at = Column(
+        DateTime,
+        nullable=True,
     )
 
     __table_args__ = (
         UniqueConstraint(
             "tracking_token",
-            name="uq_emails_tracking_token"
+            name="uq_emails_tracking_token",
         ),
         Index(
             "ix_emails_tracking_token",
             "tracking_token",
-            unique=False
+            unique=False,
+        ),
+        Index(
+            "ix_emails_status_processing_started_at",
+            "status",
+            "processing_started_at",
+        ),
+        Index(
+            "ix_emails_status_recovery_requested_at",
+            "status",
+            "recovery_requested_at",
         ),
         Index(
             "uq_emails_active_campaign_contact",
@@ -90,7 +114,8 @@ class Email(Base):
             unique=True,
             postgresql_where=text(
                 "campaign_id IS NOT NULL "
-                "AND status IN ('pending', 'sending', 'sent', 'opened')"
+                "AND status IN "
+                "('pending', 'sending', 'sent', 'opened', 'delivery_unknown')"
             ),
         ),
     )
