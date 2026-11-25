@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import os
 
@@ -21,7 +22,9 @@ class Settings:
 
     REDIS_URL: str
     APP_BASE_URL: str
-    OPENAI_API_KEY: str | None
+
+    GROQ_API_KEY: str | None
+    GROQ_MODEL: str
 
     CORS_ORIGINS: list[str]
     FORCE_EMAIL_FAILURE: bool
@@ -35,10 +38,7 @@ class Settings:
                 "SECRET_KEY must be at least 32 characters long"
             )
 
-        self.ALGORITHM = os.getenv(
-            "ALGORITHM",
-            "HS256"
-        )
+        self.ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
         self.SMTP_SERVER = os.getenv(
             "SMTP_SERVER",
@@ -46,9 +46,7 @@ class Settings:
         )
 
         try:
-            self.SMTP_PORT = int(
-                os.getenv("SMTP_PORT", "587")
-            )
+            self.SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
         except ValueError as exc:
             raise RuntimeError(
                 "SMTP_PORT must be a valid integer"
@@ -63,8 +61,14 @@ class Settings:
             "APP_BASE_URL"
         ).rstrip("/")
 
-        self.OPENAI_API_KEY = os.getenv(
-            "OPENAI_API_KEY"
+        self.GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+        self.GROQ_MODEL = (
+            os.getenv(
+                "GROQ_MODEL",
+                "openai/gpt-oss-120b"
+            ).strip()
+            or "openai/gpt-oss-120b"
         )
 
         cors_raw = os.getenv(
