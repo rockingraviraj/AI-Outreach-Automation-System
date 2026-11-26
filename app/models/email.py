@@ -45,6 +45,11 @@ class Email(Base):
         nullable=False,
     )
 
+    destination_url = Column(
+        String(2048),
+        nullable=True,
+    )
+
     status = Column(
         String,
         default="pending",

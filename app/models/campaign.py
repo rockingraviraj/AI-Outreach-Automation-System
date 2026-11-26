@@ -1,3 +1,4 @@
+
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from datetime import datetime
 
@@ -17,6 +18,12 @@ class Campaign(Base):
     )
 
     name = Column(String(100), nullable=False)
+
+    destination_url = Column(
+        String(2048),
+        nullable=True
+    )
+
     status = Column(String(20), default="draft", nullable=False)
 
     created_at = Column(

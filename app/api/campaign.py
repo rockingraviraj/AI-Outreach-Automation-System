@@ -102,6 +102,7 @@ def create_campaign(
         name=name,
         user_id=current_user.id,
         status="draft",
+        destination_url=campaign_data.destination_url,
     )
 
     try:
@@ -286,6 +287,10 @@ def update_campaign(
             )
 
         campaign.name = name
+
+    if "destination_url" in campaign_data.model_fields_set:
+        ensure_campaign_editable(campaign)
+        campaign.destination_url = campaign_data.destination_url
 
     try:
         db.commit()

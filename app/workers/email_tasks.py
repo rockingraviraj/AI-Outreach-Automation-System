@@ -14,6 +14,7 @@ from app.models.campaign import Campaign
 from app.models.campaign_contact import CampaignContact
 from app.services.ai_service import generate_email
 from app.services.email_service import send_email
+from app.services.tracking_service import build_tracked_email_body
 
 
 logger = logging.getLogger(__name__)
@@ -431,21 +432,11 @@ def send_email_task(
             contact.company or "your company",
         )
 
-        body = f"""
-<html>
-    <body>
-        {ai_content}
-
-        <img
-            src="{settings.APP_BASE_URL}/tracking/open/{email_log.tracking_token}"
-            width="1"
-            height="1"
-            alt=""
-            style="display:none;"
-        />
-    </body>
-</html>
-"""
+        body = build_tracked_email_body(
+           ai_content=ai_content,
+           tracking_token=email_log.tracking_token,
+           destination_url=email_log.destination_url,
+        )
 
         # Persist the generated body while the claim is still in the
         # pre-SMTP phase. If this database write fails, the task can safely

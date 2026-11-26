@@ -15,8 +15,10 @@ from app.models.user import User
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.services.ai_service import generate_email
+from app.services.tracking_service import build_tracked_email_body
 from app.services.email_service import send_email
 from app.workers.email_tasks import send_email_task
+from app.schemas.email import SendContactEmailRequest
 
 
 router = APIRouter(
@@ -86,6 +88,7 @@ def is_active_email_conflict(exc: IntegrityError) -> bool:
 @router.post("/send-to-contact/{contact_id}")
 def send_to_contact(
     contact_id: int,
+    request: SendContactEmailRequest | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -104,6 +107,12 @@ def send_to_contact(
             detail="Contact not found"
         )
 
+    destination_url = (
+        request.destination_url
+        if request is not None
+        else None
+    )
+
     subject = "Hello from AI Outreach System"
 
     email_log = Email(
@@ -111,7 +120,8 @@ def send_to_contact(
         subject=subject,
         body="",
         status="pending",
-        tracking_token=generate_tracking_token()
+        tracking_token=generate_tracking_token(),
+        destination_url=destination_url
     )
 
     db.add(email_log)
@@ -124,26 +134,11 @@ def send_to_contact(
             contact.company or "your company"
         )
 
-        tracking_url = (
-            f"{get_app_base_url()}"
-            f"/tracking/open/{email_log.tracking_token}"
+        body = build_tracked_email_body(
+            ai_content=ai_content,
+            tracking_token=email_log.tracking_token,
+            destination_url=email_log.destination_url,
         )
-
-        body = f"""
-        <html>
-            <body>
-                {ai_content}
-
-                <img
-                    src="{tracking_url}"
-                    width="1"
-                    height="1"
-                    alt=""
-                    style="display:none;"
-                />
-            </body>
-        </html>
-        """
 
         success = send_email(
             contact.email,
@@ -281,7 +276,9 @@ def send_campaign(
                 subject=subject,
                 body="",
                 status="pending",
-                tracking_token=generate_tracking_token()
+                tracking_token=generate_tracking_token(),
+                destination_url=campaign.destination_url
+
             )
 
             try:
@@ -319,26 +316,11 @@ def send_campaign(
                     contact.company or "your company"
                 )
 
-                tracking_url = (
-                    f"{get_app_base_url()}"
-                    f"/tracking/open/{email_log.tracking_token}"
+                body = build_tracked_email_body(
+                   ai_content=ai_content,
+                   tracking_token=email_log.tracking_token,
+                   destination_url=email_log.destination_url,
                 )
-
-                body = f"""
-                <html>
-                    <body>
-                        {ai_content}
-
-                        <img
-                            src="{tracking_url}"
-                            width="1"
-                            height="1"
-                            alt=""
-                            style="display:none;"
-                        />
-                    </body>
-                </html>
-                """
 
                 success = send_email(
                     contact.email,
@@ -506,6 +488,7 @@ def send_campaign_async(
             body="",
             status="pending",
             tracking_token=generate_tracking_token(),
+            destination_url=campaign.destination_url,
             recovery_requested_at=datetime.utcnow()
         )
 
